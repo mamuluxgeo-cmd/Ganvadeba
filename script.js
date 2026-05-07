@@ -25,7 +25,7 @@ function bindEvents() {
   document.getElementById("saveNewContractBtn").addEventListener("click", saveNewContract);
   document.getElementById("saveOldInstallmentBtn").addEventListener("click", saveOldInstallment);
 
-  document.getElementById("downloadPdfBtn").addEventListener("click", downloadContractPdf);
+  document.getElementById("downloadPdfBtn").addEventListener("click", () => downloadContractPdf("contractPreview"));
   document.getElementById("printContractBtn").addEventListener("click", () => window.print());
 
   document.getElementById("reloadControlBtn").addEventListener("click", loadControl);
@@ -54,16 +54,11 @@ function setTodayDefaults() {
 }
 
 async function api(action, payload = {}) {
-  const body = {
-    action,
-    ...payload
-  };
+  const body = { action, ...payload };
 
   const response = await fetch(API_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(body)
   });
 
@@ -146,11 +141,7 @@ function applyRoleAccess() {
     el.classList.toggle("hidden", !isAdmin);
   });
 
-  if (!isAdmin) {
-    showView("newContractView");
-  } else {
-    showView("dashboardView");
-  }
+  showView(isAdmin ? "dashboardView" : "newContractView");
 }
 
 function showView(viewId) {
@@ -188,9 +179,7 @@ async function loadAllData() {
 
 async function loadSettings() {
   const result = await api("getSettings");
-  if (result.success) {
-    settings = result.data || {};
-  }
+  if (result.success) settings = result.data || {};
 }
 
 async function loadContracts() {
@@ -250,11 +239,12 @@ function renderControl() {
 
   const rows = controlData.filter(r => {
     const text = [
+      r["ხელშეკრულების ნომერი"],
+      r["Contract ID"],
       r["კლიენტი"],
       r["პირადი ნომერი"],
       r["ტელეფონი"],
-      r["პროდუქცია"],
-      r["Contract ID"]
+      r["პროდუქცია"]
     ].join(" ").toLowerCase();
 
     return text.includes(q);
@@ -262,6 +252,7 @@ function renderControl() {
 
   document.getElementById("controlRows").innerHTML = rows.map(r => `
     <tr>
+      <td>${safe(r["ხელშეკრულების ნომერი"])}</td>
       <td>${safe(r["კლიენტი"])}</td>
       <td>${safe(r["ტელეფონი"])}</td>
       <td>${safe(r["პროდუქცია"])}</td>
@@ -279,7 +270,7 @@ function renderControl() {
         </div>
       </td>
     </tr>
-  `).join("") || emptyRow(11);
+  `).join("") || emptyRow(12);
 }
 
 function renderContracts() {
@@ -288,6 +279,7 @@ function renderContracts() {
   const rows = contractsData.filter(r => {
     const text = [
       r["Contract ID"],
+      r["ხელშეკრულების ნომერი"],
       r["ჩანაწერის ტიპი"],
       r["კლიენტი"],
       r["პირადი ნომერი"],
@@ -307,6 +299,7 @@ function renderContracts() {
   document.getElementById("contractsRows").innerHTML = filtered.map(r => `
     <tr>
       <td>${safe(r["Contract ID"])}</td>
+      <td>${safe(r["ხელშეკრულების ნომერი"])}</td>
       <td>${safe(r["ჩანაწერის ტიპი"])}</td>
       <td>${safe(r["კლიენტი"])}</td>
       <td>${safe(r["პირადი ნომერი"])}</td>
@@ -315,17 +308,15 @@ function renderContracts() {
       <td>${money(r["სრული თანხა"])}</td>
       <td>${statusBadge(r["სტატუსი"])}</td>
       <td>${safe(r["შემქმნელი"])}</td>
-      <td>
-        <button class="small-btn view" onclick="openDetails('${safeAttr(r["Contract ID"])}')">ნახვა</button>
-      </td>
+      <td><button class="small-btn view" onclick="openDetails('${safeAttr(r["Contract ID"])}')">ნახვა</button></td>
     </tr>
-  `).join("") || emptyRow(10);
+  `).join("") || emptyRow(11);
 }
 
 function previewContract() {
   const data = formToObject(document.getElementById("newContractForm"));
 
-  if (!data.buyerName || !data.buyerId || !data.products || !data.totalAmount || !data.months) {
+  if (!data.contractNumber || !data.buyerName || !data.buyerId || !data.products || !data.totalAmount || !data.months) {
     toast("შეავსე აუცილებელი ველები", true);
     return;
   }
@@ -340,7 +331,6 @@ function previewContract() {
 
 async function saveNewContract() {
   const form = document.getElementById("newContractForm");
-
   if (!form.reportValidity()) return;
 
   const data = formToObject(form);
@@ -384,7 +374,6 @@ async function saveNewContract() {
 
 async function saveOldInstallment() {
   const form = document.getElementById("oldInstallmentForm");
-
   if (!form.reportValidity()) return;
 
   const data = formToObject(form);
@@ -427,7 +416,6 @@ function openPaymentModal(contractId, buyerName) {
 
 async function confirmPayment() {
   const form = document.getElementById("paymentForm");
-
   if (!form.reportValidity()) return;
 
   const data = formToObject(form);
@@ -469,9 +457,15 @@ async function openDetails(contractId) {
     const schedule = result.schedule || [];
     const payments = result.payments || [];
 
+    const contractData = contractRowToFormData(c);
+    const contractHtml = result.latestContractHtml || (
+      c["ჩანაწერის ტიპი"] === "ახალი ხელშეკრულება" ? buildContractHtml(contractData) : ""
+    );
+
     document.getElementById("detailsContent").innerHTML = `
       <div class="details-grid">
         <div class="detail-box"><span>ID</span><strong>${safe(c["Contract ID"])}</strong></div>
+        <div class="detail-box"><span>ორდერის N</span><strong>${safe(c["ხელშეკრულების ნომერი"])}</strong></div>
         <div class="detail-box"><span>კლიენტი</span><strong>${safe(c["კლიენტი"])}</strong></div>
         <div class="detail-box"><span>ტიპი</span><strong>${safe(c["ჩანაწერის ტიპი"])}</strong></div>
         <div class="detail-box"><span>პირადი ნომერი</span><strong>${safe(c["პირადი ნომერი"])}</strong></div>
@@ -479,18 +473,22 @@ async function openDetails(contractId) {
         <div class="detail-box"><span>თანხა</span><strong>${money(c["სრული თანხა"])}</strong></div>
       </div>
 
+      ${contractHtml ? `
+        <div class="details-actions">
+          <button class="small-btn pdf" onclick="downloadContractPdf('detailsContractPrint')">ხელშეკრულების PDF</button>
+          <button class="small-btn view" onclick="printDetailsContract()">ბეჭდვა</button>
+        </div>
+        <h3>ხელშეკრულება</h3>
+        <div class="paper-wrap">
+          <div id="detailsContractPrint" class="a4-paper">${contractHtml}</div>
+        </div>
+      ` : ""}
+
       <h3>გრაფიკი</h3>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr>
-              <th>N</th>
-              <th>თარიღი</th>
-              <th>დასარიცხი</th>
-              <th>გადახდილი</th>
-              <th>დარჩენილი</th>
-              <th>სტატუსი</th>
-            </tr>
+            <tr><th>N</th><th>თარიღი</th><th>დასარიცხი</th><th>გადახდილი</th><th>დარჩენილი</th><th>სტატუსი</th></tr>
           </thead>
           <tbody>
             ${schedule.map(s => `
@@ -510,15 +508,7 @@ async function openDetails(contractId) {
       <h3>გადახდები</h3>
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th>თარიღი</th>
-              <th>თანხა</th>
-              <th>მეთოდი</th>
-              <th>კომენტარი</th>
-              <th>დაამატა</th>
-            </tr>
-          </thead>
+          <thead><tr><th>თარიღი</th><th>თანხა</th><th>მეთოდი</th><th>კომენტარი</th><th>დაამატა</th></tr></thead>
           <tbody>
             ${payments.map(p => `
               <tr>
@@ -543,24 +533,36 @@ async function openDetails(contractId) {
   }
 }
 
+function printDetailsContract() {
+  window.print();
+}
+
 function closeModals() {
   document.querySelectorAll(".modal").forEach(m => m.classList.add("hidden"));
 }
 
-function downloadContractPdf() {
-  const element = document.getElementById("contractPreview");
+function downloadContractPdf(elementId) {
+  const element = document.getElementById(elementId);
 
-  if (!lastPreviewHtml || element.classList.contains("empty-preview")) {
-    toast("ჯერ შექმენი წინასწარი ხედი", true);
+  if (!element || element.classList.contains("empty-preview")) {
+    toast("ჯერ შექმენი/გახსენი ხელშეკრულება", true);
     return;
   }
 
+  const filenameBase = document.querySelector('[name="contractNumber"]')?.value || "ganvadebis-khelshekruleba";
+
   const opt = {
     margin: 0,
-    filename: "ganvadebis-khelshekruleba.pdf",
+    filename: `${filenameBase}.pdf`,
+    pagebreak: { mode: ["css", "legacy"], before: ".force-page-break" },
     image: { type: "jpeg", quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
-    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      scrollY: 0,
+      windowWidth: 794
+    },
+    jsPDF: { unit: "mm", format: "a4", orientation: "portrait", compress: true }
   };
 
   html2pdf().set(opt).from(element).save();
@@ -572,6 +574,7 @@ function buildContractHtml(data) {
   const phone = safe(data.phone);
   const address = safe(data.address);
   const products = safe(data.products);
+  const contractNumber = safe(data.contractNumber || "");
   const totalAmount = money(data.totalAmount);
   const advanceAmount = money(data.advanceAmount || 0);
   const installmentAmount = money(num(data.totalAmount) - num(data.advanceAmount));
@@ -579,100 +582,122 @@ function buildContractHtml(data) {
   const schedule = buildLocalSchedule(data);
 
   return `
-    <div class="contract-title">
-      საყოფაცხოვრებო პროდუქციის (ავეჯი)<br>
-      განვადებით ნასყიდობის შესახებ
-    </div>
-
-    <div class="contract-top">
-      <span>ქ. ბათუმი</span>
-      <span>${contractDate} წელი</span>
-    </div>
-
-    <p>
-      ჩვენ, ქვემოთ ხელის მომწერნი, ერთის მხრივ - შ.პ.ს. ,,ედელვაისი“-ს
-      (ს/კ: 448408054) დირექტორი - გიორგი წულუკიძე (პ/ნ 61006068844),
-      შემდგომში “გამყიდველი” წოდებული და მეორეს მხრივ ${buyerName}
-      (პ/ნ-${buyerId}), შემდგომში ,,მყიველი”, ადასტურებენ, რომ მათ შორის
-      მიღწეულია შეთანხმება და აფორმებენ წინამდებარე ხელშეკრულებას შემდეგზე:
-    </p>
-
-    <div class="contract-article">მუხლი 1. ხელშეკრულების და ნასყიდობის საგანი</div>
-    <p>1.1. წინამდებარე ხელშეკრულების საგანია გამყიდველის საკუთრებაში არსებული საყოფაცხოვრებო პროდუქციის (${products}) მიერ მყიდველისათვის ნასყიდობის საგნის საკუთრების უფლებით გადაცემა ანაზღაურების სანაცვლოდ.</p>
-    <p>1.2. საკუთრების უფლება მყიდველისათვის გადაცემულად ითვლება ნასყიდობის საგნის გადაცემასთან ერთად.</p>
-    <p>1.3. ნასყიდობის საგანი განისაზღვრება წინამდებარე ხელშეკრულების დანართით, რასაც მყიდველი შეარჩევს გამყიდველის საკუთრებაში არსებულ კონკრეტულ პროდუქციას (შემდგომში - ნასყიდობის საგანი).</p>
-    <p>1.4. წინამდებარე ხელშეკრულებით გათვალისწინებული ვალდებულებების სრულად შესრულებამდე მყიდველს უფლება არ აქვს გაასხვისოს, დააზიანოს, ან/და უფლებრივად დატვირთოს ნასყიდობის საგანი.</p>
-
-    <div class="contract-article">მუხლი 2. ნასყიდობის საფასური და გადახდა</div>
-    <p>2.1. ნასყიდობის საფასური განისაზღვრება ინდივიდუალურად, მყიდველის მიერ კონკრეტული ნასყიდობის საგნის შერჩევის დროს, დანართის შესაბამისად.</p>
-    <p>2.2. ნასყიდობის საფასურის გადახდა ხორციელდება განვადებით. ნასყიდობის საფასური და გადახდის გრაფიკი განისაზღვრება ინდივიდუალურად, წინამდებარე ხელშეკრულების დანართით, რომელიც გამომდინარეობს მყიდველის მიერ შერჩეული კონკრეტული პროდუქციის შესაბამისად, მას შემდეგ, რაც მყიდველი შეარჩევს ნასყიდობის საგანს.</p>
-    <p>2.3. გადახდის გრაფიკის ზედიზედ ორჯერ დარღვევის შემთხვევაში, თუკი ვადაგადაცილებული დღეების ოდენობა აღემატება - 15 (თხუთმეტი) კალენდარულ დღეს, გამყიდველი ან/და გამყიდველის უფლებამოსილი პირი უფლებამოსილია შეწყვიტოს ხელშეკრულება მყიდველისათვის სატელეფონო შეტყობინების გაგზავნის გზით, ელ-ფოსტაზე შეტყობინებით და მოითხოვოს გადახდის გრაფიკით განსაზღვრული გადაუხდელი თანხისა და ხელშეკრულებით გათვალისწინებული ყველა სხვა გადასახდელის სრული ოდენობით გადახდა.</p>
-    <p>2.4. ვალდებულების შესრულების მიზნით, გამყიდველი ან/და გამყიდველის მიერ უფლებამოსილი პირი უფლებამოსილია დაუკავშირდეს მყიდველს, მათ შორის, სატელეფონო თუ სხვადასხვა სახის შეტყობინების გზით, შეახსენოს ვალდებულების შესრულების თარიღი, გრაფიკის დარღვევის ფაქტი, გამყიდველის მოთხოვნის უფლებები.</p>
-    <p>2.5. მყიდველი უფლებამოსილია ვადამდე დაფაროს სრულად გრაფიკით გათვალისწინებული სრული საფასური, რისთვისაც მას არ დაეკისრება დამატებითი საკომისიო ან/და პირგასამტეხლო.</p>
-
-    <div class="contract-article">მუხლი 3. კომუნიკაცია. სასამართლო უწყების ჩაბარება</div>
-    <p>3.1. გამყიდველის ან/და გამყიდველის უფლებამოსილი პირის მიერ კომუნიკაცია განხორციელდება შემდეგი საშუალებებით: სატელეფონო კომუნიკაცია; ელ-ფოსტის მეშვეობით კომუნიკაცია; ნასყიდობის საგნის ადგილსამყოფელისა და მისი მდგომარეობის შესამოწმებლად მყიდველის საცხოვრებელ ადგილზე ვიზიტი; მყიდველის მიერ მითითებულ მისამართზე ვიზიტი; ოფიციალური კორესპონდენციის გაგზავნა მყიდველის მიერ მითითებულ მისამართზე.</p>
-    <p>3.2. წინამდებარე ხელშეკრულებით გათვალისწინებული საკომუნიკაციო მონაცემები განისაზღვრება დანართით, რომელიც წარმოადგენს ხელშეკრულების განუყოფელ ნაწილს.</p>
-
-    <div class="contract-article">მუხლი 4. დავების გადაწყვეტა</div>
-    <p>4.1. მხარეები შეეცდებიან ხელშეკრულებიდან წარმოშობილი დავები გადაწყვიტონ ურთიერთშეთანხმებით.</p>
-    <p>4.2. მხარეებს უფლება აქვთ დავის გადასაწყვეტად მიმართონ სასამართლოს საქართველოს სამოქალაქო საპროცესო კოდექსით დადგენილი წესით. პირველი ინსტანციის მიერ მიღებული გადაწყვეტილება ექვემდებარება დაუყოვნებლივ აღსრულებას.</p>
-
-    <div class="contract-article">მუხლი 5. დასკვნითი დებულებები</div>
-    <p>5.1. წინამდებარე ხელშეკრულება მოქმედებს მხარეთა მიერ ნაკისრი ვალდებულებების სრულად შესრულებამდე.</p>
-    <p>5.2. ამ ხელშეკრულების ნებისმიერი ცვლილება და დამატება ძალაშია მხოლოდ იმ პირობით, თუ ის შედგენილია წერილობითი ფორმით და ხელმოწერილია მხარეთა მიერ ან/და სათანადო რწმუნებულების მქონე წარმომადგენელთა მიერ.</p>
-    <p>5.3. ეს ხელშეკრულება შედგენილია ორ იდენტურ ეგზემპლარად, ქართულ ენაზე, რომელიც გადაეცემა მხარეებს და ორივე ეგზემპლიარი თანაბარი იურიდიული ძალის მქონეა.</p>
-    <p>5.4. მყიდველი თანახმაა, გამყიდველმა დაამუშაოს წინამდებარე ხელშეკრულებიდან გამომდინარე პერსონალური მონაცემები, მათ შორის, სახელი, გვარი, პირადი ნომერი, დაბადების თარიღი, სამუშაო ადგილი, პროფესია, ოჯახური მდგომარეობა, დაბადების ადგილი, ელ-ფოსტა, ტელეფონის ნომერი, მისამართი, სოციალურ ქსელში არსებული ინფორმაცია, ფოტოსურათი, ალტერნატიული მისამართი, ფინანსური მონაცემები, გადახდასთან დაკავშირებული ინფორმაცია, სქესი, კანონიერი გზებითა და მიზნებით, მათ შორის, ამ ხელშეკრულებით გათვალისწინებული მიზნებისათვის.</p>
-
-    <div class="contract-article">მუხლი 6. მხარეთა ხელმოწერები და რეკვიზიტები</div>
-
-    <div class="signature-grid">
-      <div>
-        <strong>გამყიდველი:</strong><br>
-        შ.პ.ს. ,,ედელვაისი“-ს (ს/კ: 448408054)<br>
-        დირექტორი ------------------------------- /გიორგი წულუკიძე/<br>
-        მის: ქ. ბათუმი, ლორიას ქუჩა #7<br>
-        ელ. ფოსტა: giorgi.tsulukidze94@gmail.com<br>
-        ტელ: 557 25-06-06;
+    <section class="pdf-page">
+      <div class="contract-title">
+        საყოფაცხოვრებო პროდუქციის (ავეჯი)<br>
+        განვადებით ნასყიდობის შესახებ
       </div>
-      <div>
-        <strong>მყიველი:</strong><br>
-        ----------------------------------- /${buyerName}/<br>
-        მის: ${address}<br>
-        ტელ: ${phone};
+      <div class="contract-number">ხელშეკრულების / ორდერის N: ${contractNumber}</div>
+
+      <div class="contract-top">
+        <span>ქ. ბათუმი</span>
+        <span>${contractDate} წელი</span>
       </div>
-    </div>
 
-    <div class="schedule-title">განვადების გრაფიკი</div>
+      <p>
+        ჩვენ, ქვემოთ ხელის მომწერნი, ერთის მხრივ - შ.პ.ს. ,,ედელვაისი“-ს
+        (ს/კ: 448408054) დირექტორი - გიორგი წულუკიძე (პ/ნ 61006068844),
+        შემდგომში “გამყიდველი” წოდებული და მეორეს მხრივ ${buyerName}
+        (პ/ნ-${buyerId}), შემდგომში ,,მყიველი”, ადასტურებენ, რომ მათ შორის
+        მიღწეულია შეთანხმება და აფორმებენ წინამდებარე ხელშეკრულებას შემდეგზე:
+      </p>
 
-    <p>
-      პროდუქციის ღირებულება: <strong>${totalAmount}</strong><br>
-      წინასწარი შენატანი: <strong>${advanceAmount}</strong><br>
-      განვადებით გადასახდელი თანხა: <strong>${installmentAmount}</strong>
-    </p>
+      <div class="contract-article">მუხლი 1. ხელშეკრულების და ნასყიდობის საგანი</div>
+      <p>1.1. წინამდებარე ხელშეკრულების საგანია გამყიდველის საკუთრებაში არსებული საყოფაცხოვრებო პროდუქციის (${products}) მიერ მყიდველისათვის ნასყიდობის საგნის საკუთრების უფლებით გადაცემა ანაზღაურების სანაცვლოდ.</p>
+      <p>1.2. საკუთრების უფლება მყიდველისათვის გადაცემულად ითვლება ნასყიდობის საგნის გადაცემასთან ერთად.</p>
+      <p>1.3. ნასყიდობის საგანი განისაზღვრება წინამდებარე ხელშეკრულების დანართით, რასაც მყიდველი შეარჩევს გამყიდველის საკუთრებაში არსებულ კონკრეტულ პროდუქციას (შემდგომში - ნასყიდობის საგანი).</p>
+      <p>1.4. წინამდებარე ხელშეკრულებით გათვალისწინებული ვალდებულებების სრულად შესრულებამდე მყიდველს უფლება არ აქვს გაასხვისოს, დააზიანოს, ან/და უფლებრივად დატვირთოს ნასყიდობის საგანი.</p>
 
-    <table class="schedule-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>თარიღი</th>
-          <th>შესატანი თანხა</th>
-          <th>ფულადი ნაშთი</th>
-          <th>ბალანსი</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${schedule.map(row => `
+      <div class="contract-article">მუხლი 2. ნასყიდობის საფასური და გადახდა</div>
+      <p>2.1. ნასყიდობის საფასური განისაზღვრება ინდივიდუალურად, მყიდველის მიერ კონკრეტული ნასყიდობის საგნის შერჩევის დროს, დანართის შესაბამისად.</p>
+      <p>2.2. ნასყიდობის საფასურის გადახდა ხორციელდება განვადებით. ნასყიდობის საფასური და გადახდის გრაფიკი განისაზღვრება ინდივიდუალურად, წინამდებარე ხელშეკრულების დანართით, რომელიც გამომდინარეობს მყიდველის მიერ შერჩეული კონკრეტული პროდუქციის შესაბამისად, მას შემდეგ, რაც მყიდველი შეარჩევს ნასყიდობის საგანს.</p>
+      <p>2.3. გადახდის გრაფიკის ზედიზედ ორჯერ დარღვევის შემთხვევაში, თუკი ვადაგადაცილებული დღეების ოდენობა აღემატება - 15 (თხუთმეტი) კალენდარულ დღეს, გამყიდველი ან/და გამყიდველის უფლებამოსილი პირი უფლებამოსილია შეწყვიტოს ხელშეკრულება მყიდველისათვის სატელეფონო შეტყობინების გაგზავნის გზით, ელ-ფოსტაზე შეტყობინებით და მოითხოვოს გადახდის გრაფიკით განსაზღვრული გადაუხდელი თანხისა და ხელშეკრულებით გათვალისწინებული ყველა სხვა გადასახდელის სრული ოდენობით გადახდა. აღნიშნული ქმედების უშედეგოდ დასრულების შემთხვევაში, მყიდველი უფლებამოსილია უკან წამოიღოს გაყიდული პროდუქცია და არ დააბრუნოს წინამდებარე ხელშეკრულებით მყიდველის მიერ გადახდილი ნასყიდობის საფასური, რასაც ეთანხმება მყიდველი და არ გააჩნია პრეტენზია.</p>
+      <p>2.4. ვალდებულების შესრულების მიზნით, გამყიდველი ან/და გამყიდველის მიერ უფლებამოსილი პირი უფლებამოსილია დაუკავშირდეს მყიდველს, მათ შორის, სატელეფონო თუ სხვადასხვა სახის შეტყობინების გზით (მათ შორის, სხვადასხვა აპლიკაციისა თუ სოციალური ქსელის მეშვეობით, მაგ., Viber, Whatsupp, Facebook ან/და სხვა), შეახსენოს ვალდებულების შესრულების თარიღი, გრაფიკის დარღვევის ფაქტი, გამყიდველის მოთხოვნის უფლებები.</p>
+    </section>
+
+    <section class="pdf-page">
+      <p>2.5. მყიდველი უფლებამოსილია ვადამდე დაფაროს სრულად გრაფიკით გათვალისწინებული სრული საფასური, რისთვისაც მას არ დაეკისრება დამატებითი საკომისიო ან/და პირგასამტეხლო.</p>
+
+      <div class="contract-article">მუხლი 3. კომუნიკაცია. სასამართლო უწყების ჩაბარება</div>
+      <p>3.1. გამყიდველის ან/და გამყიდველის უფლებამოსილი პირის მიერ კომუნიკაცია განხორციელდება შემდეგი საშუალებებით: ა) სატელეფონო კომუნიკაცია; ბ) ელ-ფოსტის მეშვეობით კომუნიკაცია; გ) ნასყიდობის საგნის ადგილსამყოფელისა და მისი მდგომარეობის შესამოწმებლად მყიდველის საცხოვრებელ ადგილზე ვიზიტი; დ) მყიდველის მიერ მითითებულ მისამართზე ვიზიტი; ე) ოფიციალური კორესპონდენციის გაგზავნა მყიდველის მიერ მითითებულ მისამართზე.</p>
+      <p>3.2. წინამდებარე ხელშეკრულებით გათვალისწინებული საკომუნიკაციო მონაცემები განისაზღვრება დანართით, რომელიც წარმოადგენს ხელშეკრულების განუყოფელ ნაწილს.</p>
+
+      <div class="contract-article">მუხლი 4. დავების გადაწყვეტა</div>
+      <p>4.1. მხარეები შეეცდებიან ხელშეკრულებიდან წარმოშობილი დავები გადაწყვიტონ ურთიერთშეთანხმებით.</p>
+      <p>4.2. მხარეებს უფლება აქვთ დავის გადასაწყვეტად მიმართონ სასამართლოს საქართველოს სამოქალაქო საპროცესო კოდექსით დადგენილი წესით. პირველი ინსტანციის მიერ მიღებული გადაწყვეტილება ექვემდებარება დაუყოვნებლივ აღსრულებას.</p>
+
+      <div class="contract-article">მუხლი 5. დასკვნითი დებულებები</div>
+      <p>5.1. წინამდებარე ხელშეკრულება მოქმედებს მხარეთა მიერ ნაკისრი ვალდებულებების სრულად შესრულებამდე.</p>
+      <p>5.2. ამ ხელშეკრულების ნებისმიერი ცვლილება და დამატება ძალაშია მხოლოდ იმ პირობით, თუ ის შედგენილია წერილობითი ფორმით და ხელმოწერილია მხარეთა მიერ ან/და სათანადო რწმუნებულების მქონე წარმომადგენელთა მიერ.</p>
+      <p>5.3. ეს ხელშეკრულება შედგენილია ორ იდენტურ ეგზემპლარად, ქართულ ენაზე, რომელიც გადაეცემა მხარეებს და ორივე ეგზემპლიარი თანაბარი იურიდიული ძალის მქონეა.</p>
+      <p>5.4. მყიდველი თანახმაა, გამყიდველმა დაამუშაოს წინამდებარე ხელშეკრულებიდან გამომდინარე პერსონალური მონაცემები, მათ შორის, სახელი, გვარი, პირადი ნომერი, დაბადების თარიღი, სამუშაო ადგილი, პროფესია, ოჯახური მდგომარეობა, დაბადების ადგილი, ელ-ფოსტა, ტელეფონის ნომერი, მისამართი, სოციალურ ქსელში არსებული ინფორმაცია, ფოტოსურათი, ალტერნატიული მისამართი, ფინანსური მონაცემები, გადახდასთან დაკავშირებული ინფორმაცია, სქესი, კანონიერი გზებითა და მიზნებით, მათ შორის, ამ ხელშეკრულებით გათვალისწინებული მიზნებისათვის.</p>
+
+      <div class="contract-article">მუხლი 6. მხარეთა ხელმოწერები და რეკვიზიტები</div>
+
+      <div class="signature-grid">
+        <div class="signature-box">
+          <strong>გამყიდველი:</strong><br>
+          შ.პ.ს. ,,ედელვაისი“-ს (ს/კ: 448408054)<br>
+          დირექტორი /გიორგი წულუკიძე/<br>
+          მის: ქ. ბათუმი, ლორიას ქუჩა #7<br>
+          ელ. ფოსტა: giorgi.tsulukidze94@gmail.com<br>
+          ტელ: 557 25-06-06;
+        </div>
+        <div class="signature-box">
+          <strong>მყიველი:</strong><br>
+          /${buyerName}/<br>
+          მის: ${address}<br>
+          ტელ: ${phone};
+        </div>
+      </div>
+    </section>
+
+    <section class="pdf-page schedule-page">
+      <div class="schedule-title">განვადების გრაფიკი</div>
+
+      <div class="schedule-meta">
+        <div><strong>ხელშეკრულების / ორდერის N:</strong> ${contractNumber}</div>
+        <div><strong>კლიენტი:</strong> ${buyerName}</div>
+        <div><strong>პროდუქციის ღირებულება:</strong> ${totalAmount}</div>
+        <div><strong>წინასწარი შენატანი:</strong> ${advanceAmount}</div>
+        <div><strong>განვადებით გადასახდელი:</strong> ${installmentAmount}</div>
+        <div><strong>თვეების რაოდენობა:</strong> ${safe(data.months)}</div>
+      </div>
+
+      <table class="schedule-table">
+        <thead>
           <tr>
-            <td>${row.n}</td>
-            <td>${row.date}</td>
-            <td>${money(row.amount)}</td>
-            <td>${money(row.remaining)}</td>
-            <td>${money(row.balance)}</td>
+            <th>#</th>
+            <th>თარიღი</th>
+            <th>შესატანი თანხა</th>
+            <th>ფულადი ნაშთი</th>
+            <th>ბალანსი</th>
           </tr>
-        `).join("")}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          ${schedule.map(row => `
+            <tr>
+              <td>${row.n}</td>
+              <td>${row.date}</td>
+              <td>${money(row.amount)}</td>
+              <td>${money(row.remaining)}</td>
+              <td>${money(row.balance)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+
+      <div class="schedule-signatures">
+        <div class="dotted-sign">
+          გამყიდველი<br>
+          გიორგი წულუკიძე
+        </div>
+        <div class="dotted-sign">
+          მყიდველი<br>
+          ${buyerName}
+        </div>
+      </div>
+    </section>
   `;
 }
 
@@ -696,9 +721,7 @@ function buildLocalSchedule(data) {
     }
 
     let amount = base;
-    if (i === months) {
-      amount = round2(total - generated);
-    }
+    if (i === months) amount = round2(total - generated);
 
     generated = round2(generated + amount);
     balance = round2(balance - amount);
@@ -713,6 +736,23 @@ function buildLocalSchedule(data) {
   }
 
   return rows;
+}
+
+function contractRowToFormData(c) {
+  return {
+    contractNumber: c["ხელშეკრულების ნომერი"] || "",
+    buyerName: c["კლიენტი"] || "",
+    buyerId: c["პირადი ნომერი"] || "",
+    phone: c["ტელეფონი"] || "",
+    address: c["მისამართი"] || "",
+    products: c["პროდუქცია"] || "",
+    totalAmount: c["სრული თანხა"] || 0,
+    advanceAmount: c["წინასწარი შენატანი"] || 0,
+    months: c["თვეების რაოდენობა"] || 1,
+    contractDate: geoToInputDate(c["ხელშეკრულების თარიღი"]),
+    firstPaymentDate: geoToInputDate(c["პირველი გადახდის თარიღი"]),
+    paymentDay: c["გადახდის დღე"] || ""
+  };
 }
 
 function formToObject(form) {
@@ -733,9 +773,7 @@ function toast(message, isError = false) {
   el.style.background = isError ? "#dc2626" : "#111827";
   el.classList.remove("hidden");
 
-  setTimeout(() => {
-    el.classList.add("hidden");
-  }, 3500);
+  setTimeout(() => el.classList.add("hidden"), 3500);
 }
 
 function safe(value) {
@@ -794,6 +832,18 @@ function toInputDate(date) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function geoToInputDate(value) {
+  if (!value) return toInputDate(new Date());
+  const str = String(value);
+
+  if (str.includes(".")) {
+    const [d, m, y] = str.split(".");
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+
+  return toInputDate(new Date(str));
 }
 
 function formatDateGeo(date) {
